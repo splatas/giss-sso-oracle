@@ -1,0 +1,831 @@
+#
+# Template
+#
+#
+apiVersion: v1
+kind: Template
+labels:
+  template: nb-sso7-x509-oracle-persistent
+  rhsso: "7.5.0.GA"
+message: "A new persistent RH-SSO service (using Oracle) has been created in your project.
+          The admin username/password for accessing the master realm via the RH-SSO console is ${SSO_ADMIN_USERNAME}/${SSO_ADMIN_PASSWORD}.
+          The username/password for accessing the Oracle database \"${DB_DATABASE}\" is ${DB_USERNAME}/${DB_PASSWORD}.
+          The HTTPS keystore used for serving secure content, the JGroups keystore used for securing JGroups communications,
+          and server truststore used for securing RH-SSO requests were automatically created via OpenShift's service serving x509 certificate secrets."
+metadata:
+  name: nb-sso7-x509-oracle-persistent
+  annotations:
+    description: "An example application based on RH-SSO 7.5 image.
+                 For more information about using this template, see https://github.com/jboss-container-images/redhat-sso-7-openshift-image/docs."
+    iconClass: icon-sso
+    tags: sso,keycloak,jboss,rhsso
+    version: 1.0.0
+    openshift.io/display-name: "Red Hat Single Sign-On 7.5 + Oracle (Persistent)"
+    openshift.io/provider-display-name: Red Hat Consulting EMEA, Inc.
+    template.openshift.io/support-url: https://access.redhat.com
+    template.openshift.io/documentation-url: https://access.redhat.com/documentation/en/red-hat-single-sign-on/7.5/
+    template.openshift.io/long-description: "This template defines resources needed to develop Red Hat Single Sign-On 7.5 server based deployment,
+    deployment configuration for Oracle using persistence, and securing RH-SSO communication using re-encrypt TLS."
+#
+#
+# Parameters
+parameters:
+- description: The name for the application.
+  displayName: Application Name
+  name:        APPLICATION_NAME
+  required:    true
+  value:       "sso"
+# BuildConfig Parameters
+- description: Include the CUSTOM_INSTALL_DIRECTORIES environment variable,
+    a list of comma-separated list of directories used for installation and
+    configuration of artifacts for the image during the S2I process.
+  displayName: CUSTOM_INSTALL_DIRECTORIES
+  name: CUSTOM_INSTALL_DIRECTORIES
+  required: true
+  value: extensions
+- description: List of directories from which archives will be copied into the deployment
+    folder.  If unspecified, all archives in /target will be copied.
+  displayName: Artifact Directories
+  name: ARTIFACT_DIR
+  value: app-jee-jsp/target,service-jee-jaxrs/target,app-profile-jee-jsp/target,app-profile-saml-jee-jsp/target
+- description: Maven mirror to use for S2I builds
+  displayName: Maven mirror URL
+  name: MAVEN_MIRROR_URL
+- description: Maven mirror of to use for S2I builds
+  displayName: Maven mirror of
+  name: MAVEN_MIRROR_OF
+  required: false
+  value: "*"
+- description: Maven additional arguments to use for S2I builds
+  displayName: Maven Additional Arguments
+  name: MAVEN_ARGS_APPEND
+- description: You can disable Git’s TLS verification by setting the GIT_SSL_NO_VERIFY environment variable to true
+  displayName: Disable Git's TLS verification
+  name: GIT_SSL_NO_VERIFY
+  required: true
+  value: "true"
+- description: You can disable Git’s TLS verification by setting the GIT_SSL_NO_VERIFY environment variable to true
+  displayName: Disable Git's TLS verification
+  name: MAVEN_OPTS
+  required: true
+  value: "-Xms64m -Xmx512m -XX:+UseParallelOldGC -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=20 -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -XX:MaxMetaspaceSize=100m -XX:+ExitOnOutOfMemoryError -Dmaven.wagon.rto=60000 -Dmaven.wagon.http.retryHandler.count=5 -Dmaven.wagon.http.pool=true -Dmaven.wagon.http.retryHandler.class=default -Dmaven.wagon.provider.http=lightweight"
+- description: Script debugging is enabled, allowing bash commands and their arguments to be printed as they are executed
+  displayName: Boolean to enable Script debugging
+  name: SCRIPT_DEBUG
+  required: false
+  value: "false"
+- description: TODO new image tag
+  displayName: TODO new image tag
+  name: NEW_IMAGE_TAG
+  required: false
+  value: "latest"
+#
+# Git Configuration
+- description: Path within Git project to build; empty for root project directory.
+  displayName: Context Directory
+  name: CONTEXT_DIR
+- description: Git branch/tag reference
+  displayName: Git Reference
+  name: SOURCE_REPOSITORY_REF
+  value: master
+- description: Git source URI for application
+  displayName: Git Repository URL
+  name: SOURCE_REPOSITORY_URL
+  required: true
+  value: https://github.com/redhat-developer/redhat-sso-quickstarts
+- name: GIT_SECRET
+  description: "Name of the secret containing the credentials for the Git repository."
+  displayName: Git Secret
+  required: true
+  value: "gitlab-source-secret"
+- description: GitHub trigger secret
+  displayName: Github Webhook Secret
+  from: '[a-zA-Z0-9]{8}'
+  generate: expression
+  name: GITHUB_WEBHOOK_SECRET
+  required: true
+- description: Generic build trigger secret
+  displayName: Generic Webhook Secret
+  from: '[a-zA-Z0-9]{8}'
+  generate: expression
+  name: GENERIC_WEBHOOK_SECRET
+  required: true
+- displayName: Maven repository ID
+  description: "The id to use for the maven repository."
+  name: MAVEN_REPO_ID
+  example: repo-custom
+  required: false
+- displayName: Maven repository URL
+  description: Fully qualified URL to a Maven repository or service.
+  name: MAVEN_REPO_URL
+  example: http://nexus.nexus-project.svc.cluster.local:8081/nexus/content/groups/public/
+  required: false
+- displayName: Maven repository user name
+  description: User name for accessing the Maven repository, if required.
+  name: MAVEN_REPO_USERNAME
+  required: false
+- displayName: Maven repository password
+  description: Password to access the Maven repository, if required.
+  name: MAVEN_REPO_PASSWORD
+  required: false
+- displayName: "Secret for credentials the Maven Nexus user"
+  description: "Secret for credentials the Maven Nexus user"
+  name:        MAVEN_CREDENTIALS_SECRET
+  required: false
+# ImageStream RH-SSO
+- displayName: ImageStream Namespace
+  description: Namespace in which the ImageStreams for RH-SSO image
+    are installed. These ImageStreams are normally installed in the openshift namespace.
+    You should only need to modify this if you installed the ImageStreams in a
+    different namespace/project.
+  name: IMAGE_STREAM_NAMESPACE
+  value: openshift
+  required: true
+- displayName: SSO ImageStream Name
+  description: The name of the image stream to use for RH-SSO. Default is "sso75-openshift-rhel8".
+  name: IMAGE_STREAM_NAME
+  value: "redhat-sso75-openshift"
+  required: true
+- displayName: ImageStream Tag
+  description: A named pointer to an image in an image stream. Default is "latest".
+  name: IMAGE_STREAM_TAG
+  value: "latest"
+  required: true
+  # value: "latest"
+#
+# to DeploymentConfig
+- displayName: "Number of replicas to run in DeploymentConfig."
+  description: "Number of replicas to run in DeploymentConfig."
+  name:     REPLICAS_APPLICATION_NAME
+  required: true
+  value:    "2"
+- name: REVISION_HISTORY_LIMIT
+  description: Revision history limit is the limit of old replication controllers you want to keep around for rolling back
+  displayName: revisionHistoryLimit in DeploymentConfig
+  required: false
+  value: "5"
+#
+# JGroups
+- description: "OpenShift DNS Ping Service Port (default:8888)"
+  displayName: OpenShift DNS Ping Service Port
+  name: OPENSHIFT_DNS_PING_SERVICE_PORT
+  required: false
+  value: "8888"
+- description: JGroups protocol to use for node discovery.
+    Can be either openshift.DNS_PING or openshift.KUBE_PING.
+  displayName: JGroups protocol
+  name: JGROUPS_PING_PROTOCOL
+  required: false
+  value: "openshift.DNS_PING"
+- description: JGroups cluster password
+  displayName: JGroups Cluster Password
+  from: '[a-zA-Z0-9]{8}'
+  generate: expression
+  name: JGROUPS_CLUSTER_PASSWORD
+  required: true
+- description: "JGroups Encrypt Protocol ASYM_ENCRYPT or SYM_ENCRYPT"
+  displayName: JGroups Encrypt Protocol
+  name: JGROUPS_ENCRYPT_PROTOCOL
+  required: true
+  value: SYM_ENCRYPT
+- description: The name of the secret containing the keystore file
+  displayName: JGroups Secret Name
+  name: JGROUPS_ENCRYPT_SECRET
+  required: false
+  value: sso-jgroups-secret
+- description: JGroups Key Store Dir
+  displayName: JGroups Key Store Dir
+  name: JGROUPS_ENCRYPT_KEYSTORE_DIR
+  required: false
+  value: /etc/jgroups-encrypt-secret-volume
+- description: The name of the keystore file within the secret
+  displayName: JGroups Keystore Filename
+  name: JGROUPS_ENCRYPT_KEYSTORE
+  required: false
+  value: "jgroups.jceks"
+- description: JGroups Certificate Name
+  displayName: The name associated with the server certificate (e.g. secret-key)
+  name: JGROUPS_ENCRYPT_NAME
+  required: false
+  value: ""
+- description: The password for the keystore and certificate (e.g. password)
+  displayName: JGroups Keystore Password
+  name: JGROUPS_ENCRYPT_PASSWORD
+  required: false
+  value: ""
+#
+- displayName: "Custom http Route Hostname"
+  description: "Custom hostname for http service route. Leave blank for default hostname, e.g.: <application-name>.<project>.<default-domain-suffix>"
+  name:        HOSTNAME_HTTP
+  value:       ""
+  required:    false
+- displayName: "Custom https Route Hostname"
+  description: "Custom hostname for https service route. Leave blank for default hostname, e.g.: <application-name>.<project>.<default-domain-suffix>"
+  name:        HOSTNAME_HTTPS
+  value:       ""
+  required:    false
+#
+# SSO
+- description: Custom hostname for the RH-SSO server.
+  displayName: Custom RH-SSO Server Hostname
+  name:        SSO_HOSTNAME
+  required:    false
+- description: "The frontendUrl option can be configured via SSO_FRONTEND_URL environment variable.
+                https://access.redhat.com/documentation/en-us/red_hat_single_sign-on/7.4/html-single/server_installation_and_configuration_guide/index#_hostname"
+  displayName: "The frontendUrl option can be configured via SSO_FRONTEND_URL environment variable."
+  name:        SSO_FRONTEND_URL
+  required:    false
+- displayName: "RH-SSO Realm"
+  description: "Realm to be created in the RH-SSO server (e.g. demorealm)."
+  name:        SSO_REALM
+  value:       ""
+  required:    false
+- displayName: "RH-SSO Administrator Username"
+  description: "RH-SSO Server administrator username"
+  name:        SSO_ADMIN_USERNAME
+  from:        "[a-zA-Z0-9]{8}"
+  generate:    "expression"
+  required:    false
+- displayName: "RH-SSO Administrator Password"
+  description: "RH-SSO Server administrator password"
+  name:        SSO_ADMIN_PASSWORD
+  from:        "[a-zA-Z0-9]{32}"
+  generate:    "expression"
+  required:    false
+- displayName: "RH-SSO Service Username"
+  description: "The username used to access the RH-SSO service. This is used by clients to create the application client(s) within the specified RH-SSO realm."
+  name:        SSO_SERVICE_USERNAME
+  value: ""
+  required: false
+- displayName: "RH-SSO Service Password"
+  description: "The password for the RH-SSO service user."
+  name:        SSO_SERVICE_PASSWORD
+  value: ""
+  required: false
+- displayName: "Secret for credentials the database user"
+  description: "Secret for credentials the database user"
+  name:        SSO_CREDENTIALS_SECRET
+  value:      "db-credentials-secret"
+  required: true
+- displayName: "Secret for credentials the RH-SSO Service user"
+  description: "Secret for credentials the RH-SSO Service user (for )"
+  name:        SSO_SRV_CREDENTIALS_SECRET
+  value:       "sso-srv-credentials-secret"
+  required: true
+- displayName: "Secret for credentials the RH-SSO Server administrator"
+  description: "Secret for credentials the RH-SSO Server administrator"
+  name:        SSO_ADMIN_CREDENTIALS_SECRET
+  value:       "sso-admin-credentials-secret"
+  required: true
+#
+#
+- description: to set a server timeout based on a timeout value set in an annotation
+  displayName: Load system properties from the given URL.
+  name:        HAPROXY_ROUTER_TIMEOUT_VALUE
+  value:       "60s"
+  required:    true
+#
+#
+- displayName: "Database JNDI Name"
+  description: "Database JNDI name used by application to resolve the datasource, e.g. java:/jboss/datasources/postgresql"
+  name:        "DB_JNDI"
+  value:       "java:jboss/datasources/KeycloakDS"
+  required:    false
+- displayName: "Database Name"
+  description: "Database name"
+  name:        "DB_DATABASE"
+  value:       "root"
+  required:    false
+#
+#
+- displayName: "Database InitializeEmpty. Defaults to true"
+  description: "Initialize database if empty. If set to false the database has to be manually initialized.
+                If you want to manually initialize the database set migrationStrategy to manual which will create a
+                file with SQL commands to initialize the database. Defaults to true."
+  name: SPI_KEYCLOAKDS_INITIALIZE_EMPTY
+  value: "true"
+  required: true
+- displayName: "Strategy to use to migrate database. Defaults to update"
+  description: "Strategy to use to migrate database. Valid values are update, manual and validate.
+                Update will automatically migrate the database schema.
+                Manual will export the required changes to a file with SQL commands that you can manually execute on the database.
+                Validate will simply check if the database is up-to-date."
+  name: SPI_KEYCLOAKDS_MIGRATION_STRATEGY
+  value: "update"
+  required: true
+- displayName: "URL Connection"
+  description: "URL JDBC Connection"
+  name: KEYCLOAKDS_CONNECTION_URL
+  value: "jdbc:oracle:thin:@127.0.0.1:1532/XE"
+  required: true
+- displayName: "The initial number of connections a pool should hold."
+  description: "The initial number of connections a pool should hold.
+                See: https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html/configuration_guide/reference_material#datasource_parameters"
+  name: KEYCLOAKDS_INIT_POOL_SIZE
+  value: "0"
+  required: true
+- displayName: "The min-pool-size attribute defines the minimum size of the connection pool."
+  description: "The default minimum is zero connections. With a zero min-pool-size, connections are created and placed in the pool when the first transactions occur.
+                See: https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/performance_tuning_guide/index#pool_attributes"
+  name: KEYCLOAKDS_MIN_POOL_SIZE
+  value: "0"
+  required: true
+- displayName: "The max-pool-size attribute defines the maximum size of the connection pool."
+  description: "It is an important performance parameter because it limits the number of active connections, and thus also limits the amount of concurrent activity.
+                See: https://access.redhat.com/documentation/en-us/red_hat_jboss_enterprise_application_platform/7.2/html-single/performance_tuning_guide/index#pool_attributes"
+  name: KEYCLOAKDS_MAX_POOL_SIZE
+  value: "25"
+  required: true
+- displayName: "Environment variable is supported and appended to the JAVA_OPTS variable upon container start-up"
+  description: "Environment variable is supported and appended to the JAVA_OPTS variable upon container start-up. Server startup options."
+  name: JAVA_OPTS_APPEND
+  value: ""
+  required: false
+- description: "Specifies custom java arguments."
+  displayName: "Specifies custom java arguments."
+  name:        JAVA_CUSTOM_ENV_EXT_PROPS
+  value: ""
+  required: false
+- displayName: "Specifies the SSO Caches Mode"
+  description: "Custom SSO Caches Mode: Valid values are distributed and replicated. Default: distributed"
+  name: CUSTOM_SSO_CACHES_MODE
+  value: "distributed"
+  required: true
+- displayName: "Specifies the SSO owners to 'distributed' mode"
+  description: "Specifies the SSO owners to 'distributed' mode"
+  name: CUSTOM_SSO_CACHE_OWNERS
+  value: "2"
+  required: true
+- displayName: "It's for testings. To use H2 database"
+  description: "To Test. If it's true create the KeycloakDSTest DataSource using the Oracle parameters, but RH-SSO use the H2 database."
+  name: TEST_MODE_H2
+  value: ""
+  required: false
+#
+## SSO DataBase
+- displayName: "Database Username"
+  description: "Database user name"
+  name: "DB_USERNAME"
+  from: "user[a-zA-Z0-9]{3}"
+  generate: "expression"
+  required: false
+- displayName: "Database Password"
+  description: "Database user password"
+  name: "DB_PASSWORD"
+  from: "[a-zA-Z0-9]{32}"
+  generate: "expression"
+  required: false
+- displayName: "Database Credentials Secret"
+  description: "Database Credentials Secret"
+  name: "DB_CREDENTIALS_SECRET"
+  required: true
+  value: db-credentials-secret
+#
+#
+- description: Container memory limit
+  name: MEMORY_LIMIT
+  value: 1Gi
+- description: Container cpu limit
+  name: CPU_LIMIT
+  value: "750m"
+- description: BuildConfig memory request
+  name: BC_MEMORY_REQUEST
+  value: 1Gi
+- description: BuildConfig cpu request
+  name: BC_CPU_REQUEST
+  value: "750m"
+- displayName: "Pull-request for BuildConfig"
+  description: "pull-request for BuildConfig. e.g.: oc set build-secret --pull bc/sso imagestreamsecret
+                https://docs.openshift.com/container-platform/3.11/dev_guide/builds/build_inputs.html"
+  name: BC_PULL_SECRET_NAME
+  required: true
+  value: "imagestreamsecret"
+- displayName: "X509_CA_BUNDLE"
+  description: "X509_CA_BUNDLE https://access.redhat.com/documentation/en-us/red_hat_single_sign-on/7.4/html-single/server_administration_guide/index#openshift_4"
+  name: X509_CA_BUNDLE
+  required: true
+  value: "/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt /var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+- displayName: "CA_CERT_SECRET_NAME"
+  description: "CA_CERT_SECRET_NAME"
+  name: CA_CERT_SECRET_NAME
+  required: true
+  value: "ca-cert-secret"
+#
+- description: "CA_CERT_KEY"
+  displayName: "CA_CERT_KEY"
+  name:  CA_CERT_KEY
+  value: "rootCA"
+  required: false
+- description: "CA_CERT_PATH"
+  displayName: "CA_CERT_PATH"
+  name:  CA_CERT_PATH
+  value: "rootCA.crt"
+  required: false
+#
+# Readiness Liveness
+# https://docs.openshift.com/container-platform/3.11/dev_guide/application_health.html
+- name: READINESSPROBE_DELAYSECONDS
+  description: "After creating the container, wait n seconds before initiating the probe"
+  displayName: "readinessprobe wait n seconds before initiating the probe"
+  value: "120"
+  required: false
+- name: READINESSPROBE_PERIODSECONDS
+  description: "How often this probe should be run, defaulting to 10 seconds; the minimum is 1 second"
+  displayName: "readinessprobe, How often this probe should be run"
+  value: "10"
+  required: false
+- name: READINESSPROBE_TIMEOUTSECONDS
+  description: "How long we wait before timing out the probe, defaulting to 5 second; the minimum is again 1 second"
+  displayName: "readinessprobe, How long we wait before timing out the probe"
+  value: "5"
+  required: false
+- name: LIVENESSPROBE_DELAYSECONDS
+  description: "After creating the container, wait n seconds before initiating the probe"
+  displayName: "livenessprobe wait n seconds before initiating the probe"
+  value: "120"
+  required: false
+- name: LIVENESSPROBE_PERIODSECONDS
+  description: "How often this probe should be run, defaulting to 10 seconds; the minimum is 1 second"
+  displayName: "livenessprobe, How often this probe should be run"
+  value: "10"
+  required: false
+- name: LIVENESSPROBE_TIMEOUTSECONDS
+  description: "How long we wait before timing out the probe, defaulting to 5 second; the minimum is again 1 second"
+  displayName: "livenessprobe, How long we wait before timing out the probe"
+  value: "5"
+  required: false
+#
+- description: "READINESSPROBE_FAILURETHRESHOLD"
+  displayName: "READINESSPROBE_FAILURETHRESHOLD"
+  name: READINESSPROBE_FAILURETHRESHOLD
+  value: "3"
+  required: false
+- description: "LIVENESSPROBE_FAILURETHRESHOLD"
+  displayName: "LIVENESSPROBE_FAILURETHRESHOLD"
+  name: LIVENESSPROBE_FAILURETHRESHOLD
+  value: "3"
+  required: false
+- description: "Custom hostname for https console service route. e.g.: <application-name>-console.<project>.<default-domain-suffix>"
+  displayName: "Custom https Route Hostname for console"
+  name: CONSOLE_HOSTNAME_HTTPS
+  value: ""
+  required: false
+- description: Java options to append at starting java process
+  displayName: JAVA_OPTS_APPEND
+  name: JAVA_OPTS_APPEND
+  value: --add-opens java.base/sun.security.x509=ALL-UNNAMED --add-opens jdk.attach/sun.tools.attach=ALL-UNNAMED --add-opens java.base/sun.security.tools.keytool=ALL-UNNAMED
+#
+# Service http port
+objects:
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      description: The web server's https port.
+      service.alpha.openshift.io/serving-cert-secret-name: "${APPLICATION_NAME}-sso-x509-https-secret"
+    labels:
+      application: ${APPLICATION_NAME}
+      app: ${APPLICATION_NAME}
+    name: ${APPLICATION_NAME}
+  spec:
+    ports:
+    - name: https
+      port: 8443
+      targetPort: 8443
+    selector:
+      deploymentConfig: ${APPLICATION_NAME}
+# Service JGroups ping
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      description: The JGroups ping port for clustering.
+      service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+      service.alpha.openshift.io/serving-cert-secret-name: "${APPLICATION_NAME}-sso-x509-jgroups-secret"
+    labels:
+      application: ${APPLICATION_NAME}
+      app: ${APPLICATION_NAME}
+    name: ${APPLICATION_NAME}-ping
+  spec:
+    clusterIP: None
+    ports:
+    - name: ping
+      port: ${OPENSHIFT_DNS_PING_SERVICE_PORT}
+    publishNotReadyAddresses: true
+    selector:
+      deploymentConfig: ${APPLICATION_NAME}
+#
+# Routes
+- apiVersion: v1
+  kind: Route
+  id: ${APPLICATION_NAME}-https
+  metadata:
+    annotations:
+      description: Route for application's https service.
+      haproxy.router.openshift.io/timeout: ${HAPROXY_ROUTER_TIMEOUT_VALUE}
+    labels:
+      application: ${APPLICATION_NAME}
+      app: ${APPLICATION_NAME}
+    name: ${APPLICATION_NAME}
+  spec:
+    host: ${HOSTNAME_HTTPS}
+    to:
+      kind: Service
+      name: ${APPLICATION_NAME}
+    port:
+      targetPort: https
+    tls:
+      termination: reencrypt
+- apiVersion: v1
+  kind: Route
+  id: console-${APPLICATION_NAME}-https
+  metadata:
+    annotations:
+      description: Route for console application's https service.
+      haproxy.router.openshift.io/timeout: ${HAPROXY_ROUTER_TIMEOUT_VALUE}
+    labels:
+      application: ${APPLICATION_NAME}
+      app: ${APPLICATION_NAME}
+    name: console-${APPLICATION_NAME}
+  spec:
+    host: ${CONSOLE_HOSTNAME_HTTPS}
+    to:
+      kind: Service
+      name: ${APPLICATION_NAME}
+    port:
+      targetPort: https
+    tls:
+      termination: reencrypt
+# ImageStream
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    labels:
+      application: ${APPLICATION_NAME}
+      app: ${APPLICATION_NAME}
+    name: ${APPLICATION_NAME}
+# BuildConfig
+- apiVersion: v1
+  kind: BuildConfig
+  metadata:
+    labels:
+      application: ${APPLICATION_NAME}
+      app: ${APPLICATION_NAME}
+    name: ${APPLICATION_NAME}
+  spec:
+    output:
+      to:
+        kind: ImageStreamTag
+        name: ${APPLICATION_NAME}:${NEW_IMAGE_TAG}
+    runPolicy: Serial
+    source:
+      contextDir: ${CONTEXT_DIR}
+      git:
+        ref: ${SOURCE_REPOSITORY_REF}
+        uri: ${SOURCE_REPOSITORY_URL}
+      sourceSecret:
+        name: ${GIT_SECRET}
+      type: Git
+    strategy:
+      sourceStrategy:
+        env:
+        - name: CUSTOM_INSTALL_DIRECTORIES
+          value: ${CUSTOM_INSTALL_DIRECTORIES}
+        - name: ARTIFACT_DIR
+          value: ${ARTIFACT_DIR}
+        - name: GIT_SSL_NO_VERIFY
+          value: ${GIT_SSL_NO_VERIFY}
+        - name: MAVEN_OPTS
+          value: ${MAVEN_OPTS}
+        - name: SCRIPT_DEBUG
+          value: ${SCRIPT_DEBUG}
+        forcePull: false
+        from:
+          kind: ImageStreamTag
+          name: ${IMAGE_STREAM_NAME}:${IMAGE_STREAM_TAG}
+          namespace: ${IMAGE_STREAM_NAMESPACE}
+        incremental: false
+        pullSecret:
+          name: ${BC_PULL_SECRET_NAME}
+      type: Source
+    completionDeadlineSeconds: 3600
+    successfulBuildsHistoryLimit: 3
+    failedBuildsHistoryLimit: 3
+    resources:
+      requests:
+        cpu: ${BC_CPU_REQUEST}
+        memory: ${BC_MEMORY_REQUEST}
+    triggers:
+    - github:
+        secret: ${GITHUB_WEBHOOK_SECRET}
+      type: GitHub
+    - generic:
+        secret: ${GENERIC_WEBHOOK_SECRET}
+      type: Generic
+    - imageChange: {}
+      type: ImageChange
+    - type: ConfigChange
+# ConfigMap for "enfFrom"
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    labels:
+      application: ${APPLICATION_NAME}
+      app: ${APPLICATION_NAME}
+    name: ${APPLICATION_NAME}-cfgmap
+  data:
+    SPI_KEYCLOAKDS_INITIALIZE_EMPTY:   "${SPI_KEYCLOAKDS_INITIALIZE_EMPTY}"
+    SPI_KEYCLOAKDS_MIGRATION_STRATEGY: "${SPI_KEYCLOAKDS_MIGRATION_STRATEGY}"
+    KEYCLOAKDS_CONNECTION_URL:         "${KEYCLOAKDS_CONNECTION_URL}"
+    KEYCLOAKDS_MIN_POOL_SIZE:          "${KEYCLOAKDS_MIN_POOL_SIZE}"
+    KEYCLOAKDS_INIT_POOL_SIZE:         "${KEYCLOAKDS_INIT_POOL_SIZE}"
+    KEYCLOAKDS_MAX_POOL_SIZE:          "${KEYCLOAKDS_MAX_POOL_SIZE}"
+    JAVA_OPTS_APPEND:                  "${JAVA_OPTS_APPEND}"
+    CUSTOM_SSO_CACHES_MODE:            "${CUSTOM_SSO_CACHES_MODE}"
+    CUSTOM_SSO_CACHE_OWNERS:           "${CUSTOM_SSO_CACHE_OWNERS}"
+    TEST_MODE_H2:                      "${TEST_MODE_H2}"
+#
+# DeploymentConfig
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    labels:
+      application: ${APPLICATION_NAME}
+      app: ${APPLICATION_NAME}
+    name: ${APPLICATION_NAME}
+  spec:
+    replicas: "${{REPLICAS_APPLICATION_NAME}}"
+    revisionHistoryLimit: "${{REVISION_HISTORY_LIMIT}}"
+    selector:
+      deploymentConfig: ${APPLICATION_NAME}
+    strategy:
+      type: Rolling
+      rollingParams:
+        intervalSeconds: 1
+        maxSurge: 25%
+        maxUnavailable: 25%
+        timeoutSeconds: 600
+        updatePeriodSeconds: 1
+    template:
+      metadata:
+        labels:
+          application: ${APPLICATION_NAME}
+          deploymentConfig: ${APPLICATION_NAME}
+        name: ${APPLICATION_NAME}
+      spec:
+        containers:
+        - env:
+          - name: APPLICATION_NAME
+            value: ${APPLICATION_NAME}
+          - name: SCRIPT_DEBUG
+            value: ${SCRIPT_DEBUG}
+          - name: SSO_HOSTNAME
+            value: ${SSO_HOSTNAME}
+          - name: SSO_FRONTEND_URL
+            value: ${SSO_FRONTEND_URL}
+          - name: JAVA_CUSTOM_ENV_EXT_PROPS
+            value: ${JAVA_CUSTOM_ENV_EXT_PROPS}
+# JGroups
+          - name: JGROUPS_PING_PROTOCOL
+            value: ${JGROUPS_PING_PROTOCOL}
+          - name: OPENSHIFT_DNS_PING_SERVICE_NAME
+            value: ${APPLICATION_NAME}-ping
+          - name: OPENSHIFT_DNS_PING_SERVICE_PORT
+            value: "${OPENSHIFT_DNS_PING_SERVICE_PORT}"
+          - name: JGROUPS_CLUSTER_PASSWORD
+            value: ${JGROUPS_CLUSTER_PASSWORD}
+          - name: "X509_CA_BUNDLE"
+            value: "${X509_CA_BUNDLE}"
+          - name: "JGROUPS_ENCRYPT_PROTOCOL"
+            value: ${JGROUPS_ENCRYPT_PROTOCOL}
+          - name: "JAVA_OPTS_APPEND"
+            value: ${JAVA_OPTS_APPEND}
+# JGroups
+          # - name: JGROUPS_ENCRYPT_KEYSTORE_DIR
+          #   value: ${JGROUPS_ENCRYPT_KEYSTORE_DIR}
+          # - name: JGROUPS_ENCRYPT_PASSWORD
+          #   value: ${JGROUPS_ENCRYPT_PASSWORD}
+          # - name: JGROUPS_ENCRYPT_PROTOCOL
+          #   value: ${JGROUPS_ENCRYPT_PROTOCOL}
+          # - name: JGROUPS_ENCRYPT_SECRET
+          #   value: ${JGROUPS_ENCRYPT_SECRET}
+          # - name: JGROUPS_ENCRYPT_NAME
+          #   value: ${JGROUPS_ENCRYPT_NAME}
+          # - name: JGROUPS_ENCRYPT_KEYSTORE
+          #   value: ${JGROUPS_ENCRYPT_KEYSTORE}
+# SSO
+          - name: SSO_ADMIN_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: ${SSO_ADMIN_CREDENTIALS_SECRET}
+                key: username
+          - name: SSO_ADMIN_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: ${SSO_ADMIN_CREDENTIALS_SECRET}
+                key: password
+          - name: SSO_REALM
+            value: ${SSO_REALM}
+          - name: SSO_SERVICE_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: ${SSO_SRV_CREDENTIALS_SECRET}
+                key: username
+          - name: SSO_SERVICE_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: ${SSO_SRV_CREDENTIALS_SECRET}
+                key: password
+# SSO DB
+          - name: DB_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: ${DB_CREDENTIALS_SECRET}
+                key: username
+          - name: DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: ${DB_CREDENTIALS_SECRET}
+                key: password
+# ConfigMap
+          envFrom:
+            - configMapRef:
+                name: ${APPLICATION_NAME}-cfgmap
+#
+          image: ${APPLICATION_NAME}
+          imagePullPolicy: Always
+          livenessProbe:
+            exec:
+              command:
+              - /bin/bash
+              - -c
+              - /opt/eap/bin/livenessProbe.sh
+            initialDelaySeconds: "${{LIVENESSPROBE_DELAYSECONDS}}"
+            periodSeconds:       "${{LIVENESSPROBE_PERIODSECONDS}}"
+            timeoutSeconds:      "${{LIVENESSPROBE_TIMEOUTSECONDS}}"
+            successThreshold:    1
+            failureThreshold:    "${{LIVENESSPROBE_FAILURETHRESHOLD}}"
+          readinessProbe:
+            exec:
+              command:
+              - /bin/bash
+              - -c
+              - /opt/eap/bin/readinessProbe.sh
+            initialDelaySeconds: "${{READINESSPROBE_DELAYSECONDS}}"
+            periodSeconds:       "${{READINESSPROBE_PERIODSECONDS}}"
+            timeoutSeconds:      "${{READINESSPROBE_TIMEOUTSECONDS}}"
+            successThreshold:    1
+            failureThreshold:    "${{READINESSPROBE_FAILURETHRESHOLD}}"
+          name: ${APPLICATION_NAME}
+          ports:
+          - containerPort: 8778
+            name: jolokia
+            protocol: TCP
+          - containerPort: 8080
+            name: http
+            protocol: TCP
+          - containerPort: 8443
+            name: https
+            protocol: TCP
+          - containerPort: ${OPENSHIFT_DNS_PING_SERVICE_PORT}
+            name: ping
+            protocol: TCP
+          resources:
+            limits:
+              cpu:    ${CPU_LIMIT}
+              memory: ${MEMORY_LIMIT}
+          volumeMounts:
+          - name: sso-x509-https-volume
+            mountPath: /etc/x509/https
+            readOnly:  true
+          - name: sso-x509-jgroups-volume
+            mountPath: /etc/x509/jgroups
+            readOnly:  true
+          - name: passwordblacklist
+            mountPath: /home/jboss/password-blacklist
+            readOnly: true
+        terminationGracePeriodSeconds: 75
+        volumes:
+          - name: sso-x509-https-volume
+            secret:
+              secretName: ${APPLICATION_NAME}-sso-x509-https-secret
+          - name: sso-x509-jgroups-volume
+            secret:
+              secretName: ${APPLICATION_NAME}-sso-x509-jgroups-secret
+          - name: passwordblacklist
+            configMap:
+              name: passwordblacklist
+              defaultMode: 420
+    triggers:
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - ${APPLICATION_NAME}
+        from:
+          kind: ImageStreamTag
+          name: ${APPLICATION_NAME}:${NEW_IMAGE_TAG}
+      type: ImageChange
+    - type: ConfigChange
+
+#
+# EOF

@@ -1,0 +1,23 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<module xmlns="urn:jboss:module:1.0" name="com.oracle">
+    <resources>
+        <resource-root path="ojdbc8-19.3.0.0.jar"/>
+        <resource-root path="orai18n-19.3.0.0.jar"/>
+        <resource-root path="ucp-19.3.0.0.jar"/>
+        <!--
+        <resource-root path="ons-19.3.0.0.jar"/>
+        <resource-root path="oraclepki-19.3.0.0.jar"/>
+        <resource-root path="osdt_cert-19.3.0.0.jar"/>
+        <resource-root path="osdt_core-19.3.0.0.jar"/>
+        <resource-root path="simplefan-19.3.0.0.jar"/>
+        -->
+        <!--
+        https://www.oracle.com/database/technologies/appdev/jdbc-ucp-19c-downloads.html
+        https://blogs.oracle.com/dev2dev/get-oracle-jdbc-drivers-and-ucp-from-oracle-maven-repository-without-ides
+        -->
+    </resources>
+    <dependencies>
+        <module name="javax.api"/>
+        <module name="javax.transaction.api"/>
+    </dependencies>
+</module>

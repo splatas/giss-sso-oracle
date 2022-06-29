@@ -1,0 +1,34 @@
+#
+# Ref:
+# https://access.redhat.com/documentation/en-us/red_hat_single_sign-on/7.4/html-single/server_administration_guide/index#x509
+# https://access.redhat.com/solutions/3355391 - "How to suppress the deprecated message "WFLYCTL0028: Attribute 'security-realm'.." on EAP 7.1"
+#
+batch
+
+# Add Path
+/path=https.keystore.dir:add(path="${HTTPS_KEYSTORE_DIR}")
+/path=sso.truststore.dir:add(path="${SSO_TRUSTSTORE_DIR}")
+
+# Add security-realm
+/core-service=management/security-realm=ssl-realm:add()
+/core-service=management/security-realm=ssl-realm/server-identity=ssl:add(keystore-path="${HTTPS_KEYSTORE}", keystore-password="${HTTPS_PASSWORD}", keystore-relative-to=https.keystore.dir)
+/core-service=management/security-realm=ssl-realm/authentication=truststore:add(keystore-path="${SSO_TRUSTSTORE}",keystore-password="${SSO_TRUSTSTORE_PASSWORD}",keystore-relative-to=sso.truststore.dir,keystore-provider=jks)
+
+# Connect ssl-realm to https-listener" >> $FILE
+/subsystem=undertow/server=default-server/https-listener=https:write-attribute(name=security-realm,value=ssl-realm)
+/subsystem=undertow/server=default-server/https-listener=https:write-attribute(name=verify-client,value=REQUESTED)
+
+
+# To Testing
+/subsystem=logging/logger=org.keycloak.authentication.authenticators.x509:add()
+/subsystem=logging/logger=org.keycloak.authentication.authenticators.x509:write-attribute(name="level", value="TRACE")
+/subsystem=logging/logger=org.keycloak.services.x509:add()
+/subsystem=logging/logger=org.keycloak.services.x509:write-attribute(name="level", value="TRACE")
+/system-property=sso_https_password:add(value="${HTTPS_PASSWORD}")
+/system-property=sso_truststore_password:add(value="${SSO_TRUSTSTORE_PASSWORD}")
+
+#
+run-batch
+stop-embedded-server
+#
+# EOF
